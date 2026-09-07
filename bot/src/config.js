@@ -54,10 +54,11 @@ const CONFIG = {
   },
 
   risex: {
-    apiKey: process.env.RISEX_API_KEY || "",
-    apiSecret: process.env.RISEX_API_SECRET || "",
     baseUrl: process.env.RISEX_BASE_URL || "",
     walletPrivateKey: process.env.RISEX_WALLET_PRIVATE_KEY || "",
+    apiWalletExpires: process.env.RISEX_API_WALLET_EXPIRES
+      ? new Date(process.env.RISEX_API_WALLET_EXPIRES + "T00:00:00Z")
+      : null,
     fees: { maker: 0.0001, taker: 0.0003 }, // 0.01% maker / 0.03% taker
   },
 

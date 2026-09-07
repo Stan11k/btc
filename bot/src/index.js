@@ -6,7 +6,7 @@ const { notify } = require("./notify");
 const { NadoAdapter } = require("./adapters/nado");
 const { RisexAdapter } = require("./adapters/risex");
 const { computeSpread, roundTripCostPct, shouldEnter, shouldExit } = require("./spreadEngine");
-const { canOpenNewPosition } = require("./riskManager");
+const { canOpenNewPosition, checkApiWalletExpiry } = require("./riskManager");
 const positionStore = require("./positionStore");
 
 const exchanges = [new NadoAdapter(), new RisexAdapter()];
@@ -14,7 +14,6 @@ const exchanges = [new NadoAdapter(), new RisexAdapter()];
 // Безпечний запобіжник: якщо хоч один адаптер не підключено, торгівля
 // примусово переводиться в режим лише спостереження, незалежно від .env.
 const bothImplemented = exchanges.every((ex) => ex.implemented);
-const liveTrading = CONFIG.liveTrading && bothImplemented;
 
 if (CONFIG.liveTrading && !bothImplemented) {
   logger.warn(
@@ -23,11 +22,58 @@ if (CONFIG.liveTrading && !bothImplemented) {
   );
 }
 
+/** Базовий дозвіл на живу торгівлю: LIVE_TRADING=true і обидва адаптери підключені. */
+function canTradeLive() {
+  return CONFIG.liveTrading && bothImplemented;
+}
+
+let lastExpiryLogAt = 0;
+/**
+ * Чи дозволено ВІДКРИВАТИ нову позицію просто зараз. Крім canTradeLive(),
+ * враховує термін дії API-гаманця RISEx — навмисно НЕ застосовується до
+ * закриття позиції (handleExit): якщо гаманець прострочився, поки позиція
+ * вже відкрита на біржах, бот все одно повинен спробувати її закрити
+ * по-справжньому (а не тихо "dry-run"-лlog-увати, лишаючи реальний
+ * незахеджований ризик висіти на біржах) — якщо ключ дійсно недійсний,
+ * closePosition() сам кине помилку, і це буде голосно залоговано.
+ */
+function isEntryAllowed() {
+  if (!canTradeLive()) return false;
+  const expiry = checkApiWalletExpiry(CONFIG.risex.apiWalletExpires);
+  const now = Date.now();
+  if (expiry.status === "expired") {
+    if (now - lastExpiryLogAt > 60 * 60 * 1000) {
+      lastExpiryLogAt = now;
+      logger.error(
+        "RISEX_API_WALLET_EXPIRES минув — API-гаманець RISEx, ймовірно, більше не авторизований. " +
+          "Нові угоди заблоковано (dry-run). Продовжіть термін дії на rise.trade → API Wallets і оновіть дату в .env."
+      );
+      notify("🚨 API-гаманець RISEx прострочено — нові угоди заблоковано. Продовжіть його дію на rise.trade.");
+    }
+    return false;
+  }
+  if (expiry.status === "expiring_soon" && now - lastExpiryLogAt > 60 * 60 * 1000) {
+    lastExpiryLogAt = now;
+    logger.warn(
+      `API-гаманець RISEx спливає через ${expiry.daysLeft.toFixed(1)} дн. — продовжіть його на rise.trade → API Wallets ` +
+        "і оновіть RISEX_API_WALLET_EXPIRES у .env, інакше нові угоди буде заблоковано."
+    );
+  }
+  return true;
+}
+
 logger.info(
-  `Старт. Режим: ${liveTrading ? "LIVE (реальні ордери)" : "DRY-RUN (лише спостереження)"}. ` +
+  `Старт. Режим: ${canTradeLive() ? "LIVE (реальні ордери)" : "DRY-RUN (лише спостереження)"}. ` +
     `Символ: ${CONFIG.symbol}. Поріг входу: ${CONFIG.minSpreadPct}%. Поріг виходу: ${CONFIG.closeSpreadPct}%. ` +
     `Розмір ноги: $${CONFIG.positionSizeUsd}.`
 );
+if (CONFIG.risex.apiWalletExpires) {
+  const expiry = checkApiWalletExpiry(CONFIG.risex.apiWalletExpires);
+  logger.info(
+    `API-гаманець RISEx дійсний до ${CONFIG.risex.apiWalletExpires.toISOString().slice(0, 10)} ` +
+      `(${expiry.daysLeft != null ? expiry.daysLeft.toFixed(1) : "?"} дн. лишилось).`
+  );
+}
 
 const estCost = roundTripCostPct(exchanges[0].fees, exchanges[1].fees, { useMaker: false });
 logger.info(
@@ -82,7 +128,7 @@ async function handleEntry(state, cheap, pricy, spreadPct) {
     `Лонг ${sizeBtc.toFixed(5)} BTC на ${cheap.name} (ask $${cheap.ask.toFixed(2)}), ` +
     `шорт на ${pricy.name} (bid $${pricy.bid.toFixed(2)}).`;
 
-  if (!liveTrading) {
+  if (!isEntryAllowed()) {
     logger.trade(`[DRY-RUN] ${msg}`);
     await notify(`[DRY-RUN] ${msg}`);
     return;
@@ -136,7 +182,7 @@ async function handleExit(state, cheap, pricy) {
 
   const msg = `СИГНАЛ ВИХОДУ: спред стиснувся до порогу ${CONFIG.closeSpreadPct}%. Закриваю обидві ноги.`;
 
-  if (!liveTrading) {
+  if (!canTradeLive()) {
     logger.trade(`[DRY-RUN] ${msg}`);
     await notify(`[DRY-RUN] ${msg}`);
     return;
