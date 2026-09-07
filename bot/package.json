@@ -1,0 +1,14 @@
+{
+  "name": "btc-arb-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BTC long/short spread bot: Variational vs RISEx",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {}
+}
