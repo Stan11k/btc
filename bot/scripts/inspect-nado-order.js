@@ -86,8 +86,12 @@ async function main() {
     console.log("getAllMarkets помилка:", err.message);
   }
 
+  console.log("\nВихідний код getSubaccountOwnerIfNeeded:");
+  console.log((client.market.getSubaccountOwnerIfNeeded || (() => {})).toString().slice(0, 1500));
+
   const baseOrder = {
     subaccountOwner: account.address,
+    subaccountName: "default",
     expiration: Math.floor(Date.now() / 1000) + 60,
     nonce: Date.now(),
   };
@@ -97,7 +101,7 @@ async function main() {
       // price: людське число (як priceIncrement у getAllMarkets).
       // amount: сирий x18 (як sizeIncrement/minSize у getAllMarkets).
       // 0.003 BTC * $50000 = $150 notional — вище мінімуму $100.
-      label: "price людський, amount сирий x18, розмір 0.003 BTC",
+      label: "price людський, amount сирий x18, розмір 0.003 BTC, + subaccountName",
       order: { ...baseOrder, price: "50000", amount: (3n * 10n ** 15n).toString() },
     },
     {
