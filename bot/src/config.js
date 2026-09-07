@@ -40,18 +40,17 @@ function num(v, def) {
 const CONFIG = {
   liveTrading: bool(process.env.LIVE_TRADING, false),
   symbol: process.env.SYMBOL || "BTC-PERP",
-  minSpreadPct: num(process.env.MIN_SPREAD_PCT, 0.2),
-  closeSpreadPct: num(process.env.CLOSE_SPREAD_PCT, 0.03),
+  minSpreadPct: num(process.env.MIN_SPREAD_PCT, 0.25),
+  closeSpreadPct: num(process.env.CLOSE_SPREAD_PCT, 0.05),
   positionSizeUsd: num(process.env.POSITION_SIZE_USD, 100),
   maxOpenPositions: num(process.env.MAX_OPEN_POSITIONS, 1),
   maxDailyLossUsd: num(process.env.MAX_DAILY_LOSS_USD, 50),
   pollMs: num(process.env.POLL_MS, 1000),
 
-  variational: {
-    apiKey: process.env.VARIATIONAL_API_KEY || "",
-    apiSecret: process.env.VARIATIONAL_API_SECRET || "",
-    baseUrl: process.env.VARIATIONAL_BASE_URL || "",
-    fees: { maker: 0.0000, taker: 0.0000 }, // Omni: 0% maker/taker (RFQ model)
+  nado: {
+    baseUrl: process.env.NADO_BASE_URL || "",
+    walletPrivateKey: process.env.NADO_WALLET_PRIVATE_KEY || "",
+    fees: { maker: 0.0001, taker: 0.00035 }, // Entry Tier (0 обсягу): 0.01% maker / 0.035% taker
   },
 
   risex: {

@@ -3,13 +3,13 @@
 const CONFIG = require("./config");
 const logger = require("./logger");
 const { notify } = require("./notify");
-const { VariationalAdapter } = require("./adapters/variational");
+const { NadoAdapter } = require("./adapters/nado");
 const { RisexAdapter } = require("./adapters/risex");
 const { computeSpread, roundTripCostPct, shouldEnter, shouldExit } = require("./spreadEngine");
 const { canOpenNewPosition } = require("./riskManager");
 const positionStore = require("./positionStore");
 
-const exchanges = [new VariationalAdapter(), new RisexAdapter()];
+const exchanges = [new NadoAdapter(), new RisexAdapter()];
 
 // Безпечний запобіжник: якщо хоч один адаптер не підключено, торгівля
 // примусово переводиться в режим лише спостереження, незалежно від .env.

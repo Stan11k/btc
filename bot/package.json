@@ -10,5 +10,6 @@
   "scripts": {
     "start": "node src/index.js"
   },
+  "comment_optionalDependencies": "npm install @nadohq/client ethers, коли підключатимете src/adapters/nado.js — навмисно не додано як жорстку залежність, щоб бот стартував і без них, поки Nado-адаптер не увімкнено (implemented=false).",
   "dependencies": {}
 }
