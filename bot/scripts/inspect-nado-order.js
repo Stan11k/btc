@@ -1,10 +1,9 @@
 "use strict";
 
 /**
- * Безпечна перевірка форми ордера через validateOrderParams — цей виклик
- * ЛИШЕ ПЕРЕВІРЯЄ параметри на сервері (мін. розмір, крок ціни тощо) і НЕ
- * виконує угоду, гроші не рухаються. Використовує ВАШ реальний гаманець із
- * .env (потрібен лише для підпису запиту перевірки, не для реальної угоди).
+ * Крок 1: подивитись, як правильно створювати клієнта (createNadoClient),
+ * бо звичайний `new NadoClient(...)` не ініціалізує engineClient.
+ * Нічого не підписується і не виконується — тільки читання вихідного коду.
  *
  * Запуск (з папки bot/):
  *   node scripts/inspect-nado-order.js
@@ -28,44 +27,15 @@ function loadEnv() {
 loadEnv();
 
 async function main() {
-  const { ethers } = require("ethers");
-  const { NadoClient } = require("@nadohq/client");
+  const clientLib = require("@nadohq/client");
 
-  const pk = process.env.NADO_WALLET_PRIVATE_KEY;
-  if (!pk) {
-    console.error("NADO_WALLET_PRIVATE_KEY не задано в .env");
-    process.exit(1);
-  }
-  const wallet = new ethers.Wallet(pk);
-  console.log("Гаманець:", wallet.address);
+  console.log("===== Вихідний код createNadoClient =====");
+  console.log(clientLib.createNadoClient.toString().slice(0, 3000));
+  console.log("===== кінець =====\n");
 
-  const client = new NadoClient({ signer: wallet, gatewayUrl: "https://gateway.prod.nado.xyz/v1" });
-
-  // Дізнаємось поточну ціну BTC (product_id 2), щоб узяти правдоподібну ціну ліміт-ордера.
-  const priceInfo = await client.market.getLatestMarketPrice({ productId: 2 });
-  console.log("getLatestMarketPrice(2):", JSON.stringify(priceInfo));
-
-  // Найменш ризикована тестова заявка: мізерний розмір, ціна помітно нижча
-  // за ринок (щоб точно НЕ виконалась, навіть якби ми випадково викликали
-  // щось, що реально відправляє ордер — а ми викликаємо лише validate).
-  const candidateOrder = {
-    productId: 2,
-    order: {
-      price: "50000",
-      amount: "0.001",
-      expiration: Math.floor(Date.now() / 1000) + 60,
-    },
-  };
-
-  console.log("\nПробую validateOrderParams з:", JSON.stringify(candidateOrder));
-  try {
-    const result = await client.market.validateOrderParams(candidateOrder);
-    console.log("Результат validateOrderParams:", JSON.stringify(result));
-  } catch (err) {
-    console.log("Помилка validateOrderParams (це нормально — вона підкаже правильний формат):");
-    console.log(err.message || err);
-    if (err.response) console.log("err.response:", JSON.stringify(err.response));
-  }
+  console.log("===== Вихідний код createClientContext =====");
+  console.log(clientLib.createClientContext.toString().slice(0, 3000));
+  console.log("===== кінець =====");
 }
 
 main().catch((err) => {
