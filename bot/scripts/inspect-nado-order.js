@@ -52,13 +52,18 @@ async function main() {
   const chainEnv = chainEnvKeys.find((k) => /mainnet/i.test(k)) || chainEnvKeys[0];
   console.log("Обраний chainEnv:", chainEnv);
 
-  // Nado працює на Ink (OP-stack L2). walletClient потрібен лише для підпису
-  // (локально, без мережі) — реальний RPC для наших запитів (ціни/валідація
-  // ордера) не використовується, але viem вимагає СИНТАКСИЧНО валідний URL
-  // для конструктора транспорту.
-  const rpcUrl = "https://rpc-gel.inkonchain.com";
-  const walletClient = viem.createWalletClient({ account, transport: viem.http(rpcUrl) });
-  const publicClient = viem.createPublicClient({ transport: viem.http(rpcUrl) });
+  // Nado працює на Ink (OP-stack L2, chainId 57073). Знайдено у реальному
+  // коді сайту app.nado.xyz: validateOrderParams підписує ордер і вимагає
+  // chainId — а без явного `chain` у viem-клієнті getWalletClientChainId
+  // повертає undefined, що й давало "NaN" незалежно від інших полів.
+  const inkChain = {
+    id: 57073,
+    name: "Ink",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: { default: { http: ["https://rpc-gel.inkonchain.com"] } },
+  };
+  const walletClient = viem.createWalletClient({ account, chain: inkChain, transport: viem.http() });
+  const publicClient = viem.createPublicClient({ chain: inkChain, transport: viem.http() });
 
   let client;
   try {
@@ -87,9 +92,6 @@ async function main() {
   } catch (err) {
     console.log("getAllMarkets помилка:", err.message);
   }
-
-  console.log("\nВихідний код getSubaccountOwnerIfNeeded:");
-  console.log((client.market.getSubaccountOwnerIfNeeded || (() => {})).toString().slice(0, 1500));
 
   const baseOrder = {
     subaccountOwner: account.address,
