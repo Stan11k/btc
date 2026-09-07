@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BTC Spread Monitor — Binance vs Aster</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>₿</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="alertOverlay" class="alert-overlay" hidden></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-icon">₿</span>
+      <div>
+        <h1>BTC Spread Monitor</h1>
+        <p class="subtitle">Binance ⇄ Aster · реальний час, без затримки</p>
+      </div>
+    </div>
+    <div class="status-cluster">
+      <div class="status-pill" id="statusBinance"><span class="dot"></span>Binance</div>
+      <div class="status-pill" id="statusAster"><span class="dot"></span>Aster</div>
+    </div>
+  </header>
+
+  <main>
+    <section class="cards">
+      <article class="exchange-card" id="cardBinance">
+        <div class="exchange-head">
+          <h2>Binance Futures</h2>
+          <span class="pair">BTCUSDT</span>
+        </div>
+        <div class="price-row main">
+          <span class="label">Mid</span>
+          <span class="value" id="binanceMid">—</span>
+        </div>
+        <div class="price-row">
+          <span class="label">Bid</span>
+          <span class="value bid" id="binanceBid">—</span>
+        </div>
+        <div class="price-row">
+          <span class="label">Ask</span>
+          <span class="value ask" id="binanceAsk">—</span>
+        </div>
+        <div class="meta">оновлено <span id="binanceAge">—</span> тому</div>
+      </article>
+
+      <article class="spread-card" id="spreadCard">
+        <div class="spread-title">Спред (mid-price)</div>
+        <div class="spread-value" id="spreadValue">—</div>
+        <div class="spread-direction" id="spreadDirection">очікування даних…</div>
+        <div class="spread-sub">
+          <span>Арбітражний (виконуваний): <b id="arbValue">—</b></span>
+        </div>
+        <div class="threshold-row">
+          <label for="thresholdInput">Поріг сповіщення, %</label>
+          <input type="number" id="thresholdInput" value="2" min="0.01" step="0.01" />
+        </div>
+        <div class="controls-row">
+          <label class="switch">
+            <input type="checkbox" id="soundToggle" checked />
+            <span>🔊 звук</span>
+          </label>
+          <label class="switch">
+            <input type="checkbox" id="notifToggle" />
+            <span>🔔 push-сповіщення браузера</span>
+          </label>
+          <button id="testAlertBtn" class="ghost-btn">Тест сповіщення</button>
+        </div>
+      </article>
+
+      <article class="exchange-card" id="cardAster">
+        <div class="exchange-head">
+          <h2>Aster Futures</h2>
+          <span class="pair">BTCUSDT</span>
+        </div>
+        <div class="price-row main">
+          <span class="label">Mid</span>
+          <span class="value" id="asterMid">—</span>
+        </div>
+        <div class="price-row">
+          <span class="label">Bid</span>
+          <span class="value bid" id="asterBid">—</span>
+        </div>
+        <div class="price-row">
+          <span class="label">Ask</span>
+          <span class="value ask" id="asterAsk">—</span>
+        </div>
+        <div class="meta">оновлено <span id="asterAge">—</span> тому</div>
+      </article>
+    </section>
+
+    <section class="log-section">
+      <div class="log-head">
+        <h2>Журнал спрацювань (≥ поріг)</h2>
+        <button id="clearLogBtn" class="ghost-btn small">Очистити</button>
+      </div>
+      <div class="log-table-wrap">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th>Час</th>
+              <th>Спред, %</th>
+              <th>Дорожче на</th>
+              <th>Binance mid</th>
+              <th>Aster mid</th>
+            </tr>
+          </thead>
+          <tbody id="logBody">
+            <tr class="log-empty"><td colspan="5">Поки що подій немає</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="note">
+      Дані надходять напряму з браузера через публічні WebSocket-потоки бірж
+      (без проміжного сервера й без затримки на боці Claude). Binance може бути
+      недоступний з деяких країн (напр. США) — у такому разі спробуйте VPN або
+      запустіть сторінку з іншої мережі.
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
