@@ -56,11 +56,13 @@ async function main() {
   // (локально, без мережі) — реальний RPC для наших запитів (ціни/валідація
   // ордера) не використовується, але viem вимагає СИНТАКСИЧНО валідний URL
   // для конструктора транспорту.
-  const walletClient = viem.createWalletClient({ account, transport: viem.http("https://rpc-gel.inkonchain.com") });
+  const rpcUrl = "https://rpc-gel.inkonchain.com";
+  const walletClient = viem.createWalletClient({ account, transport: viem.http(rpcUrl) });
+  const publicClient = viem.createPublicClient({ transport: viem.http(rpcUrl) });
 
   let client;
   try {
-    client = clientLib.createNadoClient({ chainEnv }, { walletClient, publicClient: undefined });
+    client = clientLib.createNadoClient({ chainEnv }, { walletClient, publicClient });
     console.log("createNadoClient спрацював.");
   } catch (err) {
     console.error("createNadoClient не спрацював:", err.message);
