@@ -5,39 +5,74 @@ const CONFIG = require("../config");
 const logger = require("../logger");
 
 /**
- * Адаптер RISEx (rise.trade) — повністю ончейн ордербук-перпи на RISE Chain.
- * Комісії: 0.03% taker / 0.01% maker (публічно підтверджено).
+ * Адаптер RISEx (rise.trade) — ончейн перп-DEX на RISE Chain.
  *
- * СТАТУС: НЕ ПІДКЛЮЧЕНО (implemented = false).
+ * Базовий REST API знайдено емпірично (07.09.2026) через вкладку Network
+ * браузера на www.rise.trade (жодної офіційної публічної документації не
+ * вдалось знайти — сайти docs.risechain.com / api.risex.net або
+ * недоступні, або взагалі про іншу платформу з подібною назвою):
  *
- * Причина: точний REST/WS API (базовий URL, формат заголовків автентифікації,
- * ендпоінти "тікер"/"виставити ордер"/"закрити позицію") не вдалось
- * перевірити з цього середовища — офіційний docs.risechain.com і схожі
- * джерела були недоступні через мережеву політику пісочниці, у якій писався
- * цей код. Відомо, що сторонні агрегатори (напр. tread.fi) підключають RISEx
- * через API-ключ, і що RISEx має "sub-accounts" з делегованим виконанням —
- * тобто ймовірно НЕ обов'язково передавати боту приватний ключ основного
- * гаманця. Але вгадувати тут exact-формат запиту, що рухає гроші, — погана
- * ідея, тож методи нижче — заглушки з чіткими TODO.
+ *   GET https://api.rise.trade/api/v1/markets
+ *   → { data: { markets: [ { market_id, base_asset_symbol: "BTC/USDC",
+ *                             mark_price, index_price, last_price, ... } ] } }
  *
- * ЩО ЗРОБИТИ, ЩОБ ПІДКЛЮЧИТИ:
- *   1. Зайдіть у свій акаунт на rise.trade → Settings/API, створіть API-ключ
- *      з правом ТІЛЬКИ на торгівлю (без права виводу коштів), якщо така
- *      опція є. Якщо RISEx вимагає підпис транзакцій гаманцем — створіть
- *      ОКРЕМИЙ гаманець спеціально для бота (не основний), профінансуйте
- *      лише сумою, якою готові ризикувати, і використайте sub-account /
- *      делегований підписант, якщо платформа це підтримує.
- *   2. Скопіюйте приклад коду ("Quickstart"/"Get API Key"), який rise.trade
- *      показує одразу після створення ключа — там завжди є робочий приклад
- *      запиту з правильним base URL і заголовками. Вставте його логіку в
- *      методи нижче замість TODO.
- *   3. Поставте this.implemented = true.
+ * Запит публічний, без авторизації (CORS дозволено для www.rise.trade).
+ * BTC — market_id "1" (base_asset_symbol "BTC/USDC").
+ *
+ * ОБМЕЖЕННЯ: ця відповідь не містить окремих bid/ask — тільки mark_price/
+ * index_price/last_price. Поки що використовуємо mark_price як і bid, і ask
+ * (тобто власний спред RISEx вважаємо нульовим) — це трохи завищує
+ * розрахунковий "арбітражний" прибуток, бо ігнорує реальний спред книги
+ * ордерів RISEx. Якщо потрібна вища точність — знайдіть у Network (вкладка
+ * WS або окремий запит на кшталт /orderbook, /depth, /ticker) реальний
+ * bid/ask і підставте замість mark_price нижче.
+ *
+ * Комісії (0.03% taker / 0.01% maker) — публічно підтверджені раніше з
+ * маркетингових матеріалів RISEx, тарифи для конкретного акаунта можуть
+ * відрізнятись.
+ *
+ * СТАТУС: читання ціни (getBookTicker) працює на реальному API.
+ * Виставлення/закриття ордерів (openMarket/closePosition) — ще ЗАГЛУШКИ:
+ * авторизація й формат запиту на угоди (ймовірно, підпис гаманцем — на
+ * скріні акаунта є "API Wallets", де можна авторизувати гаманець-підписант,
+ * що не може виводити кошти) не перевірялись. Знайдіть у Network запит, що
+ * відправляється при реальному розміщенні ордера на сайті (треба буде
+ * увійти в акаунт і, можливо, зробити тестову угоду на мінімальному
+ * розмірі), і заповніть методи нижче за його зразком.
  */
 class RisexAdapter extends BaseAdapter {
   constructor() {
     super("RISEx", CONFIG.risex.fees);
     this.cfg = CONFIG.risex;
-    this.implemented = false; // <-- поставте true, коли підключите реальні виклики нижче
+    // Читання ціни підтверджено робочим — safe: openMarket/closePosition
+    // нижче все одно безумовно кидають "TODO" незалежно від цього прапорця.
+    this.implemented = true;
+    this.marketId = null;
+  }
+
+  async _resolveMarketId() {
+    if (this.marketId != null) return this.marketId;
+    const markets = await this._fetchMarkets();
+    const btc = markets.find((m) => m.base_asset_symbol === "BTC/USDC");
+    if (!btc) throw new Error('base_asset_symbol "BTC/USDC" відсутній у /api/v1/markets');
+    this.marketId = btc.market_id;
+    logger.info(`RISEx: BTC/USDC = market_id ${this.marketId} (mark price $${parseFloat(btc.mark_price).toFixed(2)}).`);
+    return this.marketId;
+  }
+
+  async _fetchMarkets() {
+    const res = await fetch(`${this.cfg.baseUrl || "https://api.rise.trade"}/api/v1/markets`, {
+      headers: { Accept: "application/json" },
+    });
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (_) {
+      throw new Error(`markets: сервер повернув не-JSON (HTTP ${res.status}): ${text.slice(0, 300)}`);
+    }
+    if (!res.ok) throw new Error(`markets: HTTP ${res.status}: ${text.slice(0, 300)}`);
+    return json?.data?.markets || [];
   }
 
   async getBookTicker() {
@@ -45,19 +80,22 @@ class RisexAdapter extends BaseAdapter {
       logger.warn("RISEx: адаптер ще не підключено — біржа вважається офлайн.");
       return null;
     }
-    // TODO: реальний виклик REST API RISEx, повернути { bid, ask, ts }
-    // Приклад заготовки, коли дізнаєтесь base URL:
-    //   const res = await fetch(`${this.cfg.baseUrl}/api/v1/ticker?symbol=${CONFIG.symbol}`, {
-    //     headers: { "X-API-KEY": this.cfg.apiKey },
-    //   });
-    //   const json = await res.json();
-    //   return { bid: parseFloat(json.bid), ask: parseFloat(json.ask), ts: Date.now() };
-    throw new Error("RISEx.getBookTicker(): TODO — підключіть реальний API");
+    const marketId = await this._resolveMarketId();
+    const markets = await this._fetchMarkets();
+    const entry = markets.find((m) => m.market_id === marketId);
+    if (!entry) throw new Error(`market_id ${marketId} відсутній у /api/v1/markets`);
+    const mid = parseFloat(entry.mark_price);
+    if (!Number.isFinite(mid)) {
+      throw new Error(`Не вдалося розпарсити mark_price: ${JSON.stringify(entry).slice(0, 300)}`);
+    }
+    // Немає окремого bid/ask у цьому ендпоінті — використовуємо mark_price
+    // для обох (див. ОБМЕЖЕННЯ у коментарі класу вище).
+    return { bid: mid, ask: mid, ts: Date.now() };
   }
 
   async getOpenPosition() {
     if (!this.implemented) return null;
-    // TODO
+    // TODO: знайти ендпоінт позицій акаунта (потребує авторизації)
     throw new Error("RISEx.getOpenPosition(): TODO");
   }
 
@@ -65,8 +103,9 @@ class RisexAdapter extends BaseAdapter {
     if (!this.implemented) {
       throw new Error("RISEx.openMarket(): адаптер не підключено, торгівля заблокована");
     }
-    // TODO
-    throw new Error("RISEx.openMarket(): TODO — підключіть реальний API");
+    // TODO: знайти реальний запит розміщення ордера через Network (авторизація
+    // приватним ключем API-гаманця з rise.trade → Settings → API Wallets).
+    throw new Error("RISEx.openMarket(): TODO — підключіть і перевірте реальний виклик API");
   }
 
   async closePosition() {
@@ -74,7 +113,7 @@ class RisexAdapter extends BaseAdapter {
       throw new Error("RISEx.closePosition(): адаптер не підключено");
     }
     // TODO
-    throw new Error("RISEx.closePosition(): TODO — підключіть реальний API");
+    throw new Error("RISEx.closePosition(): TODO — підключіть і перевірте реальний виклик API");
   }
 }
 
