@@ -49,10 +49,14 @@ async function main() {
   console.log("Гаманець (viem account):", account.address);
 
   const chainEnvKeys = Object.keys(clientLib.ENGINE_CLIENT_ENDPOINTS || {});
-  const chainEnv = chainEnvKeys.includes("mainnet") ? "mainnet" : chainEnvKeys[0];
+  const chainEnv = chainEnvKeys.find((k) => /mainnet/i.test(k)) || chainEnvKeys[0];
   console.log("Обраний chainEnv:", chainEnv);
 
-  const walletClient = viem.createWalletClient({ account, transport: viem.http() });
+  // Nado працює на Ink (OP-stack L2). walletClient потрібен лише для підпису
+  // (локально, без мережі) — реальний RPC для наших запитів (ціни/валідація
+  // ордера) не використовується, але viem вимагає СИНТАКСИЧНО валідний URL
+  // для конструктора транспорту.
+  const walletClient = viem.createWalletClient({ account, transport: viem.http("https://rpc-gel.inkonchain.com") });
 
   let client;
   try {
