@@ -76,24 +76,50 @@ async function main() {
     console.log("getLatestMarketPrice помилка:", err.message);
   }
 
-  // placeOrder() у SDK сам додає subaccountOwner через getSubaccountOwnerIfNeeded(),
-  // а validateOrderParams — ні (пряма передача), тож додаємо вручну.
-  const candidateOrder = {
-    productId: 2,
-    order: {
-      subaccountOwner: account.address,
-      price: "50000",
-      amount: "0.001",
-      expiration: Math.floor(Date.now() / 1000) + 60,
-      nonce: Date.now(),
-    },
-  };
-  console.log("\nПробую validateOrderParams з:", JSON.stringify(candidateOrder));
+  // Можливо, SDK потребує заздалегідь підвантажені метадані продукту
+  // (крок ціни/розміру) для внутрішніх розрахунків — підвантажуємо явно.
   try {
-    const result = await client.market.validateOrderParams(candidateOrder);
-    console.log("Результат validateOrderParams:", JSON.stringify(result));
+    const markets = await client.market.getAllMarkets();
+    const btc = Array.isArray(markets) ? markets.find((m) => m.productId === 2) : markets?.[2];
+    console.log("\ngetAllMarkets() -> productId 2:", JSON.stringify(btc).slice(0, 600));
   } catch (err) {
-    console.log("Помилка validateOrderParams (підкаже правильний формат):", err.message);
+    console.log("getAllMarkets помилка:", err.message);
+  }
+
+  const baseOrder = {
+    subaccountOwner: account.address,
+    expiration: Math.floor(Date.now() / 1000) + 60,
+    nonce: Date.now(),
+  };
+
+  const variants = [
+    { label: "людський формат (price/amount як є)", order: { ...baseOrder, price: "50000", amount: "0.001" } },
+    {
+      label: "масштабовано ×1e18 (priceX18/amount як BigInt-рядки)",
+      order: { ...baseOrder, price: (50000n * 10n ** 18n).toString(), amount: (10n ** 15n).toString() },
+    },
+    {
+      label: "поля названі priceX18/amountX18",
+      order: {
+        subaccountOwner: account.address,
+        expiration: baseOrder.expiration,
+        nonce: baseOrder.nonce,
+        priceX18: (50000n * 10n ** 18n).toString(),
+        amountX18: (10n ** 15n).toString(),
+      },
+    },
+  ];
+
+  for (const { label, order } of variants) {
+    const candidateOrder = { productId: 2, order };
+    console.log(`\n--- Варіант: ${label} ---`);
+    console.log("order:", JSON.stringify(order));
+    try {
+      const result = await client.market.validateOrderParams(candidateOrder);
+      console.log("УСПІХ, результат validateOrderParams:", JSON.stringify(result));
+    } catch (err) {
+      console.log("Помилка:", err.message);
+    }
   }
 }
 
