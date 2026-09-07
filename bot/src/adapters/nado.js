@@ -121,7 +121,13 @@ class NadoAdapter extends BaseAdapter {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "all_bbo" }),
     });
-    const json = await res.json();
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (_) {
+      throw new Error(`all_bbo: сервер повернув не-JSON (HTTP ${res.status}): ${text.slice(0, 300)}`);
+    }
     // Поля _x18 в API Nado завжди фіксовані з масштабом 1e18 (як oracle_price_x18
     // вище) — тому пробуємо і "звичайні", і "_x18" варіанти назв полів.
     const list = json?.data?.bbos || json?.bbos || json?.data || [];
