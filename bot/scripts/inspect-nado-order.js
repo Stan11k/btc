@@ -76,12 +76,16 @@ async function main() {
     console.log("getLatestMarketPrice помилка:", err.message);
   }
 
+  // placeOrder() у SDK сам додає subaccountOwner через getSubaccountOwnerIfNeeded(),
+  // а validateOrderParams — ні (пряма передача), тож додаємо вручну.
   const candidateOrder = {
     productId: 2,
     order: {
+      subaccountOwner: account.address,
       price: "50000",
       amount: "0.001",
       expiration: Math.floor(Date.now() / 1000) + 60,
+      nonce: Date.now(),
     },
   };
   console.log("\nПробую validateOrderParams з:", JSON.stringify(candidateOrder));
