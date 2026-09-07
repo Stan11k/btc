@@ -116,26 +116,30 @@ class NadoAdapter extends BaseAdapter {
       return null;
     }
     const productId = await this._resolveProductId();
+    // "all_bbo" не існує — сервер сам підказав список валідних типів запиту
+    // (status/contracts/nonces/linked_signer/subaccount_info/all_products/
+    // edge_all_products/market_price/market_prices/order/orders/
+    // validate_order/fee_rates/...). Найближчий відповідник bid/ask —
+    // "market_price" з конкретним product_id.
     const res = await fetch(`${this.cfg.baseUrl || "https://gateway.prod.nado.xyz/v1"}/query`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "all_bbo" }),
+      body: JSON.stringify({ type: "market_price", product_id: productId }),
     });
     const text = await res.text();
     let json;
     try {
       json = JSON.parse(text);
     } catch (_) {
-      throw new Error(`all_bbo: сервер повернув не-JSON (HTTP ${res.status}): ${text.slice(0, 300)}`);
+      throw new Error(`market_price: сервер повернув не-JSON (HTTP ${res.status}): ${text.slice(0, 300)}`);
     }
+    if (!res.ok) {
+      throw new Error(`market_price: HTTP ${res.status}: ${JSON.stringify(json).slice(0, 300)}`);
+    }
+    const entry = json?.data ?? json;
+    logger.info(`Nado market_price (сира відповідь, для звірки полів): ${JSON.stringify(entry).slice(0, 1000)}`);
     // Поля _x18 в API Nado завжди фіксовані з масштабом 1e18 (як oracle_price_x18
     // вище) — тому пробуємо і "звичайні", і "_x18" варіанти назв полів.
-    const list = json?.data?.bbos || json?.bbos || json?.data || [];
-    const entry = Array.isArray(list) ? list.find((e) => e.product_id === productId) : null;
-    if (!entry) {
-      logger.info(`Nado all_bbo (сира відповідь, для звірки полів): ${JSON.stringify(json).slice(0, 2000)}`);
-      throw new Error("BTC-PERP (product_id 2) відсутній у відповіді all_bbo — див. сиру відповідь вище");
-    }
     const rawBid = entry.bid_x18 ?? entry.bid_price ?? entry.bid;
     const rawAsk = entry.ask_x18 ?? entry.ask_price ?? entry.ask;
     const scale = entry.bid_x18 !== undefined ? 1e18 : 1;
