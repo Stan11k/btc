@@ -51,7 +51,12 @@ class NadoAdapter extends BaseAdapter {
   constructor() {
     super("Nado", CONFIG.nado.fees);
     this.cfg = CONFIG.nado;
-    this.implemented = false; // <-- поставте true, коли перевірите виклики нижче
+    // Тимчасово true — лише щоб протестувати читання цін (getBookTicker) з
+    // реального API і звірити формат відповідей. Це БЕЗПЕЧНО саме собою:
+    // openMarket/closePosition нижче все одно безумовно кидають помилку
+    // "TODO", і головний цикл ніколи не виставить реальний ордер, поки
+    // LIVE_TRADING=false у .env (він і лишається false — це окремий вимикач).
+    this.implemented = true;
     this.productId = null; // кешується після першого успішного getBookTicker()
     this._client = null;
   }
