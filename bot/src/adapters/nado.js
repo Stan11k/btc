@@ -11,51 +11,47 @@ const logger = require("../logger");
  * EIP-712 ордери з sender/nonce/expiration — тож нижче використано ці самі
  * назви).
  *
- * Підтверджено з офіційної документації (docs.nado.xyz) і GitHub
- * (nadohq/nado-typescript-sdk):
+ * Підтверджено на реальному API (07.09.2026, gateway.prod.nado.xyz):
  *   - npm-пакет: @nadohq/client (плюс потрібен ethers для гаманця-підписанта)
  *   - Gateway REST (mainnet): https://gateway.prod.nado.xyz/v1
  *     запити: POST {gateway}/query   виконання: POST {gateway}/execute
+ *   - Валідні типи query: status, contracts, nonces, linked_signer,
+ *     subaccount_info, all_products, edge_all_products, market_price,
+ *     market_prices, order, orders, validate_order, fee_rates, ...
+ *     ("all_bbo" з документації насправді НЕ існує — 422 з підказкою вище)
+ *   - all_products не містить символу (тільки product_id+oracle_price_x18) —
+ *     BTC-PERP визначається за product_id=2 (див. _resolveProductId)
+ *   - market_price {type:"market_price", product_id} → { product_id,
+ *     bid_x18, ask_x18 }, масштаб 1e18 — ЦЕ ПІДТВЕРДЖЕНО РЕАЛЬНИМ ЗАПИТОМ
  *   - Комісії perp (Entry Tier, 0 обсягу): taker 0.035%, maker 0.01%
  *     (зростає обсяг → комісія падає; уточніть свій тариф запитом fee-rates)
  *   - Ордер підписується гаманцем (EIP-712, domain name "Nado", version
  *     "0.0.1", verifying contract — окремий на кожен product_id)
- *   - Розміщення ордера через SDK:
+ *   - Розміщення ордера через SDK (ЩЕ НЕ ПЕРЕВІРЕНО реальним запитом):
  *       const payload = await nadoClient.context.engineClient.payloadBuilder
  *         .buildPlaceOrderPayload({ ... });
  *       await nadoClient.context.engineClient.execute("place_order", payload.payload);
  *
- * СТАТУС: implemented = false. Причина: я НЕ зміг виконати жодного реального
- * запиту до gateway.prod.nado.xyz з середовища, де писався цей код (мережева
- * політика пісочниці блокує вихідні з'єднання до цього хосту), тож не можу
- * підтвердити точні назви полів у відповідях (наприклад, як саме в масиві
- * "all_products" записано символ BTC-перпа, чи так і буде "BTC-PERP", і які
- * саме поля містить відповідь запиту "all_bbo"). Код нижче написано за
- * задокументованою структурою API й повинен бути дуже близьким до робочого —
- * але перш ніж ставити implemented = true, ЗАПУСТІТЬ getBookTicker() один
- * раз, роздрукуйте сирі відповіді (console.log вже додано нижче) і звірте
- * назви полів із тим, що реально повертає API.
+ * СТАТУС: читання ціни (getBookTicker) ПІДТВЕРДЖЕНО робоче на реальному API.
+ * Виставлення/закриття ордерів (openMarket/closePosition) — ще ЗАГЛУШКИ:
+ * вони безумовно кидають помилку "TODO" незалежно від this.implemented,
+ * тож flip implemented=true нижче лишається безпечним сам собою (LIVE_TRADING
+ * теж має бути true в .env, і обидва адаптери — implemented, щоб бот узагалі
+ * спробував реальний ордер).
  *
- * ЩО ЗРОБИТИ, ЩОБ ПІДКЛЮЧИТИ:
+ * ЩО ЗРОБИТИ, ЩОБ ДОДАТИ РЕАЛЬНУ ТОРГІВЛЮ:
  *   1. npm install @nadohq/client ethers   (у папці bot/)
- *   2. Створіть окремий гаманець спеціально для бота, профінансуйте лише
- *      сумою ризику, покладіть приватний ключ у .env → NADO_WALLET_PRIVATE_KEY
- *      (НІКОЛИ не в git, ніколи не в чат).
- *   3. Перевірте на https://nadohq.github.io/nado-typescript-sdk/ точну
- *      сигнатуру конструктора NadoClient (нижче — найбільш імовірний варіант
- *      за документацією, але не 100% підтверджений) і виправте за потреби.
- *   4. Запустіть у dry-run, звірте ціни з тим, що бачите на app.nado.xyz.
- *   5. Поставте this.implemented = true.
+ *   2. Перевірте на https://nadohq.github.io/nado-typescript-sdk/ точну
+ *      сигнатуру конструктора NadoClient і buildPlaceOrderPayload.
+ *   3. Заповніть openMarket/closePosition, перевірте на маленькому розмірі.
  */
 class NadoAdapter extends BaseAdapter {
   constructor() {
     super("Nado", CONFIG.nado.fees);
     this.cfg = CONFIG.nado;
-    // Тимчасово true — лише щоб протестувати читання цін (getBookTicker) з
-    // реального API і звірити формат відповідей. Це БЕЗПЕЧНО саме собою:
-    // openMarket/closePosition нижче все одно безумовно кидають помилку
-    // "TODO", і головний цикл ніколи не виставить реальний ордер, поки
-    // LIVE_TRADING=false у .env (він і лишається false — це окремий вимикач).
+    // Читання ціни підтверджено робочим (07.09.2026) — safe: openMarket/
+    // closePosition нижче все одно безумовно кидають "TODO" незалежно від
+    // цього прапорця, поки їх не доопрацюють.
     this.implemented = true;
     this.productId = null; // кешується після першого успішного getBookTicker()
     this._client = null;
@@ -136,18 +132,15 @@ class NadoAdapter extends BaseAdapter {
     if (!res.ok) {
       throw new Error(`market_price: HTTP ${res.status}: ${JSON.stringify(json).slice(0, 300)}`);
     }
+    // Підтверджено на реальному API (07.09.2026): market_price повертає
+    // { product_id, bid_x18, ask_x18 }, масштаб 1e18, напр.
+    // {"product_id":2,"bid_x18":"78785000000000000000000","ask_x18":"78786000000000000000000"}
     const entry = json?.data ?? json;
-    logger.info(`Nado market_price (сира відповідь, для звірки полів): ${JSON.stringify(entry).slice(0, 1000)}`);
-    // Поля _x18 в API Nado завжди фіксовані з масштабом 1e18 (як oracle_price_x18
-    // вище) — тому пробуємо і "звичайні", і "_x18" варіанти назв полів.
-    const rawBid = entry.bid_x18 ?? entry.bid_price ?? entry.bid;
-    const rawAsk = entry.ask_x18 ?? entry.ask_price ?? entry.ask;
-    const scale = entry.bid_x18 !== undefined ? 1e18 : 1;
-    const bid = parseFloat(rawBid) / scale;
-    const ask = parseFloat(rawAsk) / scale;
+    const bid = parseFloat(entry.bid_x18) / 1e18;
+    const ask = parseFloat(entry.ask_x18) / 1e18;
     if (!Number.isFinite(bid) || !Number.isFinite(ask)) {
-      logger.info(`Nado all_bbo entry для product_id ${productId} (для звірки полів): ${JSON.stringify(entry)}`);
-      throw new Error("Не вдалося розпарсити bid/ask з all_bbo — див. сиру відповідь вище");
+      logger.info(`Nado market_price — не вдалось розпарсити (сира відповідь): ${JSON.stringify(entry).slice(0, 500)}`);
+      throw new Error("Не вдалося розпарсити bid_x18/ask_x18 з market_price — див. сиру відповідь вище");
     }
     return { bid, ask, ts: Date.now() };
   }
