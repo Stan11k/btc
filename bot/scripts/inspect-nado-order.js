@@ -1,11 +1,12 @@
 "use strict";
 
 /**
- * Крок 1: подивитись, як правильно створювати клієнта (createNadoClient),
- * бо звичайний `new NadoClient(...)` не ініціалізує engineClient.
- * Нічого не підписується і не виконується — тільки читання вихідного коду.
+ * Правильна ініціалізація NadoClient потребує viem (walletClient/
+ * publicClient), не ethers. Тут: знайти правильний chainEnv, зібрати
+ * клієнта через createNadoClient, і безпечно перевірити (validateOrderParams
+ * — не виконує угоду) форму ордера. Нічого не рухає гроші.
  *
- * Запуск (з папки bot/):
+ * Запуск (з папки bot/, після `npm install @nadohq/client viem`):
  *   node scripts/inspect-nado-order.js
  */
 
@@ -28,14 +29,64 @@ loadEnv();
 
 async function main() {
   const clientLib = require("@nadohq/client");
+  console.log("Валідні chainEnv (ENGINE_CLIENT_ENDPOINTS):", JSON.stringify(clientLib.ENGINE_CLIENT_ENDPOINTS, null, 2));
 
-  console.log("===== Вихідний код createNadoClient =====");
-  console.log(clientLib.createNadoClient.toString().slice(0, 3000));
-  console.log("===== кінець =====\n");
+  let viem, accounts;
+  try {
+    viem = require("viem");
+    accounts = require("viem/accounts");
+  } catch (err) {
+    console.error("Пакет 'viem' не встановлено. Виконайте: npm install viem");
+    process.exit(1);
+  }
 
-  console.log("===== Вихідний код createClientContext =====");
-  console.log(clientLib.createClientContext.toString().slice(0, 3000));
-  console.log("===== кінець =====");
+  const pk = process.env.NADO_WALLET_PRIVATE_KEY;
+  if (!pk) {
+    console.error("NADO_WALLET_PRIVATE_KEY не задано в .env");
+    process.exit(1);
+  }
+  const account = accounts.privateKeyToAccount(pk.startsWith("0x") ? pk : `0x${pk}`);
+  console.log("Гаманець (viem account):", account.address);
+
+  const chainEnvKeys = Object.keys(clientLib.ENGINE_CLIENT_ENDPOINTS || {});
+  const chainEnv = chainEnvKeys.includes("mainnet") ? "mainnet" : chainEnvKeys[0];
+  console.log("Обраний chainEnv:", chainEnv);
+
+  const walletClient = viem.createWalletClient({ account, transport: viem.http() });
+
+  let client;
+  try {
+    client = clientLib.createNadoClient({ chainEnv }, { walletClient, publicClient: undefined });
+    console.log("createNadoClient спрацював.");
+  } catch (err) {
+    console.error("createNadoClient не спрацював:", err.message);
+    return;
+  }
+
+  console.log("engineClient присутній?", !!client.context.engineClient);
+
+  try {
+    const priceInfo = await client.market.getLatestMarketPrice({ productId: 2 });
+    console.log("getLatestMarketPrice(2):", JSON.stringify(priceInfo));
+  } catch (err) {
+    console.log("getLatestMarketPrice помилка:", err.message);
+  }
+
+  const candidateOrder = {
+    productId: 2,
+    order: {
+      price: "50000",
+      amount: "0.001",
+      expiration: Math.floor(Date.now() / 1000) + 60,
+    },
+  };
+  console.log("\nПробую validateOrderParams з:", JSON.stringify(candidateOrder));
+  try {
+    const result = await client.market.validateOrderParams(candidateOrder);
+    console.log("Результат validateOrderParams:", JSON.stringify(result));
+  } catch (err) {
+    console.log("Помилка validateOrderParams (підкаже правильний формат):", err.message);
+  }
 }
 
 main().catch((err) => {
