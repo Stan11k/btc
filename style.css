@@ -126,6 +126,11 @@ main {
   align-items: stretch;
 }
 
+.cards.hero-only {
+  grid-template-columns: minmax(0, 640px);
+  justify-content: center;
+}
+
 @media (max-width: 900px) {
   .cards { grid-template-columns: 1fr; }
 }
@@ -238,6 +243,11 @@ main {
   color: var(--text-dim);
 }
 
+.threshold-row {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
 .threshold-row input {
   width: 70px;
   background: var(--bg);
@@ -247,6 +257,10 @@ main {
   padding: 6px 8px;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
+}
+
+.threshold-row .krw-label {
+  margin-left: 10px;
 }
 
 .controls-row {
@@ -280,7 +294,7 @@ main {
 .ghost-btn:hover { border-color: var(--accent); color: var(--accent); }
 .ghost-btn.small { padding: 5px 10px; font-size: 12px; }
 
-.log-section {
+.log-section, .exchanges-section {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -291,12 +305,19 @@ main {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
   margin-bottom: 8px;
 }
 
 .log-head h2 {
   font-size: 15px;
   margin: 0;
+}
+
+.log-head .hint {
+  font-size: 12px;
+  color: var(--text-dim);
 }
 
 .log-table-wrap {
@@ -339,6 +360,33 @@ main {
   text-align: center;
   padding: 18px;
 }
+
+.exchange-table td.ex-status {
+  width: 14px;
+}
+
+.row-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-dim);
+}
+
+.row-dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.row-dot.connecting { background: var(--amber); }
+.row-dot.down { background: var(--red); }
+
+.exchange-table tr.cheapest { box-shadow: inset 3px 0 0 var(--green); }
+.exchange-table tr.priciest { box-shadow: inset 3px 0 0 var(--red); }
+
+.exchange-table .ex-name-quote {
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.exchange-table td.stale { color: var(--red); }
 
 .note {
   max-width: 1180px;
