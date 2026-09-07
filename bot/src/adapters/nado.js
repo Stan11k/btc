@@ -83,9 +83,12 @@ class NadoAdapter extends BaseAdapter {
       body: JSON.stringify({ type: "all_products" }),
     });
     const json = await res.json();
-    logger.info("Nado all_products (сира відповідь, для звірки полів): " + JSON.stringify(json).slice(0, 500));
     // TODO: перевірте реальну структуру — це найбільш імовірний варіант за документацією:
     const products = json?.data?.perp_products || json?.perp_products || [];
+    logger.info(
+      `Nado perp_products (${products.length} шт., для звірки полів): ` +
+        JSON.stringify(products).slice(0, 4000)
+    );
     const btc = products.find(
       (p) => p.symbol === "BTC-PERP" || p.ticker_id === "BTC-PERP" || p.symbol === "BTC"
     );
