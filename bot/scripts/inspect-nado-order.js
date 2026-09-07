@@ -93,20 +93,20 @@ async function main() {
   };
 
   const variants = [
-    { label: "людський формат (price/amount як є)", order: { ...baseOrder, price: "50000", amount: "0.001" } },
     {
-      label: "масштабовано ×1e18 (priceX18/amount як BigInt-рядки)",
-      order: { ...baseOrder, price: (50000n * 10n ** 18n).toString(), amount: (10n ** 15n).toString() },
+      // price: людське число (як priceIncrement у getAllMarkets).
+      // amount: сирий x18 (як sizeIncrement/minSize у getAllMarkets).
+      // 0.003 BTC * $50000 = $150 notional — вище мінімуму $100.
+      label: "price людський, amount сирий x18, розмір 0.003 BTC",
+      order: { ...baseOrder, price: "50000", amount: (3n * 10n ** 15n).toString() },
     },
     {
-      label: "поля названі priceX18/amountX18",
-      order: {
-        subaccountOwner: account.address,
-        expiration: baseOrder.expiration,
-        nonce: baseOrder.nonce,
-        priceX18: (50000n * 10n ** 18n).toString(),
-        amountX18: (10n ** 15n).toString(),
-      },
+      label: "price людський, amount людський 0.003",
+      order: { ...baseOrder, price: "50000", amount: "0.003" },
+    },
+    {
+      label: "від'ємний amount (шорт) — price людський, amount сирий x18",
+      order: { ...baseOrder, price: "50000", amount: (-3n * 10n ** 15n).toString() },
     },
   ];
 
