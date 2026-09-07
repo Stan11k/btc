@@ -75,25 +75,38 @@ class NadoAdapter extends BaseAdapter {
     return this._client;
   }
 
+  /**
+   * У відповіді "all_products" немає текстового символу (ні "symbol", ні
+   * "ticker") — лише product_id і oracle_price_x18. Визначили product_id
+   * BTC-PERP емпірично, звіривши масштаб ціни (oracle_price_x18 / 1e18)
+   * з реальною ціною BTC у момент тесту (07.09.2026, ~$78 828):
+   *   product_id 2 → 78827.95  (BTC)   product_id 4 → 2473.58 (ETH)
+   *   product_id 8 → 103.45 (SOL)      product_id 10 → 1.386 (XRP) ...
+   * Тобто BTC-PERP = product_id 2. Про всяк випадок звіряємо це щоразу
+   * (ціна має бути в правдоподібному діапазоні для BTC), щоб одразу
+   * помітити, якщо Nado колись перенумерує продукти.
+   */
   async _resolveProductId() {
     if (this.productId != null) return this.productId;
+    const KNOWN_BTC_PRODUCT_ID = 2;
     const res = await fetch(`${this.cfg.baseUrl || "https://gateway.prod.nado.xyz/v1"}/query`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "all_products" }),
     });
     const json = await res.json();
-    // TODO: перевірте реальну структуру — це найбільш імовірний варіант за документацією:
     const products = json?.data?.perp_products || json?.perp_products || [];
-    logger.info(
-      `Nado perp_products (${products.length} шт., для звірки полів): ` +
-        JSON.stringify(products).slice(0, 4000)
-    );
-    const btc = products.find(
-      (p) => p.symbol === "BTC-PERP" || p.ticker_id === "BTC-PERP" || p.symbol === "BTC"
-    );
-    if (!btc) throw new Error("Не знайшов BTC-PERP у відповіді all_products — перевірте поля вручну");
-    this.productId = btc.product_id ?? btc.id;
+    const btc = products.find((p) => p.product_id === KNOWN_BTC_PRODUCT_ID);
+    if (!btc) throw new Error(`product_id ${KNOWN_BTC_PRODUCT_ID} відсутній у all_products`);
+    const oraclePrice = parseFloat(btc.oracle_price_x18) / 1e18;
+    if (!(oraclePrice > 10000 && oraclePrice < 5000000)) {
+      throw new Error(
+        `product_id ${KNOWN_BTC_PRODUCT_ID} має неправдоподібну для BTC ціну ($${oraclePrice.toFixed(2)}) — ` +
+          "мапінг product_id, схоже, змінився, перевірте all_products вручну."
+      );
+    }
+    logger.info(`Nado: BTC-PERP = product_id ${KNOWN_BTC_PRODUCT_ID} (oracle price $${oraclePrice.toFixed(2)}).`);
+    this.productId = KNOWN_BTC_PRODUCT_ID;
     return this.productId;
   }
 
@@ -109,11 +122,24 @@ class NadoAdapter extends BaseAdapter {
       body: JSON.stringify({ type: "all_bbo" }),
     });
     const json = await res.json();
-    // TODO: перевірте реальну структуру відповіді all_bbo
-    const list = json?.data?.bbos || json?.bbos || [];
-    const entry = list.find((e) => e.product_id === productId);
-    if (!entry) throw new Error("BTC-PERP відсутній у відповіді all_bbo");
-    return { bid: parseFloat(entry.bid_price ?? entry.bid), ask: parseFloat(entry.ask_price ?? entry.ask), ts: Date.now() };
+    // Поля _x18 в API Nado завжди фіксовані з масштабом 1e18 (як oracle_price_x18
+    // вище) — тому пробуємо і "звичайні", і "_x18" варіанти назв полів.
+    const list = json?.data?.bbos || json?.bbos || json?.data || [];
+    const entry = Array.isArray(list) ? list.find((e) => e.product_id === productId) : null;
+    if (!entry) {
+      logger.info(`Nado all_bbo (сира відповідь, для звірки полів): ${JSON.stringify(json).slice(0, 2000)}`);
+      throw new Error("BTC-PERP (product_id 2) відсутній у відповіді all_bbo — див. сиру відповідь вище");
+    }
+    const rawBid = entry.bid_x18 ?? entry.bid_price ?? entry.bid;
+    const rawAsk = entry.ask_x18 ?? entry.ask_price ?? entry.ask;
+    const scale = entry.bid_x18 !== undefined ? 1e18 : 1;
+    const bid = parseFloat(rawBid) / scale;
+    const ask = parseFloat(rawAsk) / scale;
+    if (!Number.isFinite(bid) || !Number.isFinite(ask)) {
+      logger.info(`Nado all_bbo entry для product_id ${productId} (для звірки полів): ${JSON.stringify(entry)}`);
+      throw new Error("Не вдалося розпарсити bid/ask з all_bbo — див. сиру відповідь вище");
+    }
+    return { bid, ask, ts: Date.now() };
   }
 
   async getOpenPosition() {
